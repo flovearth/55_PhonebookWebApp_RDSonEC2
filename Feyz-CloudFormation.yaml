@@ -98,7 +98,7 @@ Resources:
                 pip3 install flask_mysql
                 pip3 install flask_sqlalchemy
                 echo "${MyDBURI}" > /home/ec2-user/dbserver.endpoint
-                FOLDER="https://raw.githubusercontent.com/clarusway/cw-workshop/aws/pr-004/aws/projects/004-phonebook-web-application/"
+                FOLDER="https://raw.githubusercontent.com/flovearth/55_PhonebookWebApp_RDSonEC2/main/"
                 curl -s --create-dirs -o "/home/ec2-user/templates/index.html" -L "$FOLDER"templates/index.html
                 curl -s --create-dirs -o "/home/ec2-user/templates/add-update.html" -L "$FOLDER"templates/add-update.html
                 curl -s --create-dirs -o "/home/ec2-user/templates/delete.html" -L "$FOLDER"templates/delete.html
