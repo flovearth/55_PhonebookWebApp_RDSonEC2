@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  The Phonebook Application aims to create a phonebook application in Python 
+  and deployed as a web application with Flask on AWS Application Load Balancer 
+  with Auto Scaling Group of Elastic Compute Cloud (EC2) Instances and Relational 
+  Database Service (RDS) using AWS Cloudformation Service.
+
+
+Resources:
+  LimaWebServerSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Enable HTTP connection only from LimaALBSecurityGroup
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !GetAtt LimaALBSecurityGroup.GroupId
+        - IpProtocol: tcp #Test için açıldı. Deneme sonrası kaldırılacak.
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+
+
+  LimaRDSDBInstance:
+    Type: "AWS::RDS::DBInstance"
+    Properties:
+      AllocatedStorage: 20
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: true
+      BackupRetentionPeriod: 0
+      # DBClusterIdentifier: AmazonRDS
+      DBInstanceClass: db.t2.micro #required
+      DBInstanceIdentifier: phonebook-app
+      DBName: phonebook
+      VPCSecurityGroups:  #  RDS security groupp bu region'da olmadığı için değiştirildi.
+        - !GetAtt LimaRDSSecurityGroup.GroupId  #  Sonuna GroupId eklendi.
+      DeleteAutomatedBackups: true
+      Engine: MySQL
+      EngineVersion: 8.0.19
+      MasterUserPassword: clarusway-1
+      MasterUsername: admin
+      MonitoringInterval: 0
+      MultiAZ: false
+      Port: 3306
+      PubliclyAccessible: true # ???????
+  
+
+
+
+
+  LimaALBSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Enables HTTP connection from everywhere.
+      GroupName: String
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+
+  LimaRDSSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Enables DB connection from LimaWebServerSecurityGroup.
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !GetAtt LimaWebServerSecurityGroup.GroupId
+
+
+  LimaWebServerLaunchTemplate:
+    Type: "AWS::EC2::LaunchTemplate"
+    Properties:
+      LaunchTemplateData:
+          ImageId: ami-00a205cb8e06c3c4e  #  Region değişikliğinde değiştirilecek...
+          InstanceType: t2.micro
+          KeyName: 20200824  # değiştirilecek
+          SecurityGroupIds: 
+            - !GetAtt LimaWebServerSecurityGroup.GroupId
+          TagSpecifications: 
+            - ResourceType: instance
+              Tags: 
+                - Key: Name
+                  Value: !Sub Web Server of ${AWS::StackName} Stack #Stack name nerede belirleniyor?? Stack oluşturulurken veriliyor...
+          UserData: 
+            Fn::Base64:
+              !Sub 
+              - |
+                #! /bin/bash
+                yum update -y
+                yum install python3 -y
+                pip3 install flask
+                pip3 install flask_mysql
+                pip3 install flask_sqlalchemy
+                echo "${MyDBURI}" > /home/ec2-user/dbserver.endpoint
+                FOLDER="https://raw.githubusercontent.com/clarusway/cw-workshop/aws/pr-004/aws/projects/004-phonebook-web-application/"
+                curl -s --create-dirs -o "/home/ec2-user/templates/index.html" -L "$FOLDER"templates/index.html
+                curl -s --create-dirs -o "/home/ec2-user/templates/add-update.html" -L "$FOLDER"templates/add-update.html
+                curl -s --create-dirs -o "/home/ec2-user/templates/delete.html" -L "$FOLDER"templates/delete.html
+                curl -s --create-dirs -o "/home/ec2-user/app.py" -L "$FOLDER"phonebook-app.py
+                python3 /home/ec2-user/app.py
+              - MyDBURI: !GetAtt LimaRDSDBInstance.Endpoint.Address                
+
+
+
+
+  LimaTargetGroup:
+    Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
+    Properties:
+      Port: 80
+      Protocol: HTTP
+      TargetType: instance
+      VpcId: !GetAtt LimaWebServerSecurityGroup.VpcId
+  
+
+  LimaLoadBalancer:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+      IpAddressType: ipv4
+      Scheme: internet-facing
+      SecurityGroups:
+        - !GetAtt LimaWebServerSecurityGroup.GroupId
+      Subnets:
+        - subnet-65af6c19 #Herkes kendi VPC'deki default subnet'ini yazacak
+        - subnet-edd80ea1
+        - subnet-88d84ce2
+      Type: application
+  
+  LimaListener:
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      DefaultActions:  #required
+        - TargetGroupArn: !Ref LimaTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref LimaLoadBalancer
+      Port: 80  #required
+      Protocol: HTTP  #required
+
+
+  LimaAutoScalingGroup:
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Properties:
+      AvailabilityZones:
+        !GetAZs ""
+      DesiredCapacity: 2
+      HealthCheckGracePeriod: 90
+      HealthCheckType: ELB
+      LaunchTemplate: 
+        LaunchTemplateId: !Ref LimaWebServerLaunchTemplate
+        Version: !GetAtt LimaWebServerLaunchTemplate.LatestVersionNumber
+      MaxSize: 3 
+      MinSize: 1 
+      TargetGroupARNs: 
+        - !Ref LimaTargetGroup
+
+  
+Outputs:
+  WebsiteURL:
+    Value: !Sub 
+      - http://${ALBAddress}
+      - ALBAddress: !GetAtt LimaLoadBalancer.DNSName
+    Description: Milliseconds Converter Application Load Balancer URL
