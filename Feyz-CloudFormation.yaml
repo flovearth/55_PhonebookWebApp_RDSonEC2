@@ -1,10 +1,16 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: |
-  The Phonebook Application aims to create a phonebook application in Python 
-  and deployed as a web application with Flask on AWS Application Load Balancer 
-  with Auto Scaling Group of Elastic Compute Cloud (EC2) Instances and Relational 
-  Database Service (RDS) using AWS Cloudformation Service.
+  CloudFormation Template for Phonebook Application. This template creates Application Load Balancer 
+  with Auto Scaling Group of Amazon Linux 2 (ami-00a205cb8e06c3c4e - Frankfurt) EC2 Instances which host Python Flask Web Application.
+  EC2 instances are placed within LimaWebServerSecurityGroup which allows http (80) connections only from LimaALBSecurityGroup,
+  and allows tcp(3306) connections only within itself. RDS DB instance is placed within LimaWebServerSecurityGroup so that
+  Database Server can communicate with Web Servers.
 
+  Application Load Balancer is placed within LimaALBSecurityGroup which allows http (80) connections from antwhere.
+  LimaAutoScalingGroup Auto Scaling Group is using the LimaWebServerLaunchTemplate Launch Template in order to spin up instances needed.
+  LimaWebServerLaunchTemplate Launch Template is configured to prepare Python Flask environment on EC2,
+  and to deploy Phonebook Application on Flask Server after downloading the app code from my Github repository.
+  
 
 Resources:
   LimaWebServerSecurityGroup:
@@ -21,43 +27,6 @@ Resources:
           ToPort: 22
           CidrIp: 0.0.0.0/0
 
-  LimaRDSSecurityGroup:  # Yeni tanımlanan
-    Type: "AWS::RDS::DBSecurityGroup"
-    Properties:
-      DBSecurityGroupIngress: #required
-        - CIDRIP: 0.0.0.0/0
-        - EC2SecurityGroupId: !GetAtt LimaWebServerSecurityGroup.GroupId
-      GroupDescription: LimaRDSSecurityGroup #required
-
-
-
-
-  LimaRDSDBInstance:
-    Type: "AWS::RDS::DBInstance"
-    Properties:
-      AllocatedStorage: 20
-      AllowMajorVersionUpgrade: false
-      AutoMinorVersionUpgrade: true
-      BackupRetentionPeriod: 0
-      DBClusterIdentifier: phonebook # phonebook yazıldı.
-      DBInstanceClass: db.t2.micro #required
-      DBInstanceIdentifier: phonebook-app
-      DBName: phonebook
-      DBSecurityGroups:  # eklendi 21.10
-        - !Ref LimaRDSSecurityGroup  # eklendi 21.10
-
-      # VPCSecurityGroups:  #  RDS security groupp bu region'da olmadığı için değiştirildi.
-      #   - !GetAtt LimaRDSSecurityGroup.GroupId  #  Sonuna GroupId eklendi.
-      DeleteAutomatedBackups: true
-      Engine: MySQL
-      EngineVersion: 8.0.19
-      MasterUserPassword: clarusway-1
-      MasterUsername: admin
-      MonitoringInterval: 0
-      MultiAZ: false
-      Port: 3306
-      PubliclyAccessible: true # ???????
-  
 
   LimaALBSecurityGroup:
     Type: "AWS::EC2::SecurityGroup"
@@ -69,17 +38,6 @@ Resources:
           FromPort: 80
           ToPort: 80
           CidrIp: 0.0.0.0/0
-
-# İPTAL 
-  # LimaRDSSecurityGroup:  3 iptal edilecek RDS security group yazıldı
-    # Type: "AWS::EC2::SecurityGroup"
-    # Properties:
-      # GroupDescription: Enables DB connection from LimaWebServerSecurityGroup.
-      # SecurityGroupIngress:
-        # - IpProtocol: tcp
-          # FromPort: 3306
-          # ToPort: 3306
-          # SourceSecurityGroupId: !GetAtt LimaWebServerSecurityGroup.GroupId
 
 
   LimaWebServerLaunchTemplate:
@@ -95,7 +53,7 @@ Resources:
             - ResourceType: instance
               Tags: 
                 - Key: Name
-                  Value: !Sub Web Server of ${AWS::StackName} Stack #Stack name Stack oluşturulurken veriliyor...
+                  Value: !Sub Web Server of ${AWS::StackName}  #Stack name Stack oluşturulurken veriliyor...
           UserData: 
             Fn::Base64:
               !Sub 
@@ -124,7 +82,7 @@ Resources:
       TargetType: instance
       UnhealthyThresholdCount: 3
       HealthyThresholdCount: 2
-      VpcId: !GetAtt LimaALBSecurityGroup.VpcId
+      VpcId: !GetAtt LimaWebServerSecurityGroup.VpcId  #  LimaWebserverSecurity Group da kullanılabilir mi??
   
 
   LimaLoadBalancer:
@@ -140,6 +98,7 @@ Resources:
         - subnet-88d84ce2
       Type: application
   
+
   LimaListener:
     Type: "AWS::ElasticLoadBalancingV2::Listener"
     Properties:
@@ -156,7 +115,7 @@ Resources:
     Properties:
       AvailabilityZones:
         !GetAZs ""
-      DesiredCapacity: 2
+      DesiredCapacity: 1
       HealthCheckGracePeriod: 300
       HealthCheckType: ELB
       LaunchTemplate: 
@@ -167,10 +126,46 @@ Resources:
       TargetGroupARNs: 
         - !Ref LimaTargetGroup
 
+
+  # LimaRDSSecurityGroup:  # Yeni tanımlanan  FRANKFURT REGION'DAN DOLAYI KULLANILMADI
+  #   Type: "AWS::RDS::DBSecurityGroup"
+  #   Properties:
+  #     GroupDescription: LimaRDSSecurityGroup #required  
+  #     DBSecurityGroupIngress: #required
+  #       - CIDRIP: 0.0.0.0/0
+  #       - EC2SecurityGroupId: !GetAtt LimaWebServerSecurityGroup.GroupId
+
+
+  LimaRDSDBInstance:
+    Type: "AWS::RDS::DBInstance"
+    DeletionPolicy: Delete
+    Properties:
+      AllocatedStorage: 20
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: true
+      BackupRetentionPeriod: 0
+      # DBClusterIdentifier: phonebook # phonebook yazıldı.
+      DBInstanceClass: db.t2.micro #required
+      DBInstanceIdentifier: floveARThDBinstance
+      DBName: phonebook
+      # DBSecurityGroups:  # eklendi 21.10 # tekrar çıkarıldı. 23.10
+      #   - !Ref LimaRDSSecurityGroup  # eklendi 21.10 # tekrar çıkarıldı. 23.10
+      VPCSecurityGroups:  #  RDS security groupp bu region'da olmadığı için değiştirildi.
+        - !GetAtt LimaWebServerSecurityGroup.GroupId  #  Sonuna GroupId eklendi.
+      DeleteAutomatedBackups: true
+      Engine: MySQL
+      EngineVersion: 8.0.19
+      MasterUserPassword: 1234567890
+      MasterUsername: admin
+      MultiAZ: false
+      Port: 3306
+      PubliclyAccessible: true # ???????
+  
+
   
 Outputs:
   WebsiteURL:
     Value: !Sub 
       - http://${ALBAddress}
       - ALBAddress: !GetAtt LimaLoadBalancer.DNSName
-    Description: Milliseconds Converter Application Load Balancer URL
+    Description: Phonebook Application Load Balancer URL
