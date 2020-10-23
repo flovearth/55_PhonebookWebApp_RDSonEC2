@@ -21,15 +21,15 @@ Resources:
           ToPort: 22
           CidrIp: 0.0.0.0/0
 
-# RDSSecurityGroup:  # Yeni tanımlanan
-  # Type: "AWS::RDS::DBSecurityGroup"
-  # Properties:
-    # DBSecurityGroupIngress: #required
-      # - Ingress
-    # EC2VpcId: String
-    # GroupDescription: String #required
-    # Tags:
-      # - Tag
+  LimaRDSSecurityGroup:  # Yeni tanımlanan
+    Type: "AWS::RDS::DBSecurityGroup"
+    Properties:
+      DBSecurityGroupIngress: #required
+        - CIDRIP: 0.0.0.0/0
+        - EC2SecurityGroupId: !GetAtt LimaWebServerSecurityGroup.GroupId
+      GroupDescription: LimaRDSSecurityGroup #required
+
+
 
 
   LimaRDSDBInstance:
@@ -39,12 +39,15 @@ Resources:
       AllowMajorVersionUpgrade: false
       AutoMinorVersionUpgrade: true
       BackupRetentionPeriod: 0
-      # DBClusterIdentifier: AmazonRDS
+      DBClusterIdentifier: phonebook # phonebook yazıldı.
       DBInstanceClass: db.t2.micro #required
       DBInstanceIdentifier: phonebook-app
       DBName: phonebook
-      VPCSecurityGroups:  #  RDS security groupp bu region'da olmadığı için değiştirildi.
-        - !GetAtt LimaRDSSecurityGroup.GroupId  #  Sonuna GroupId eklendi.
+      DBSecurityGroups:  # eklendi 21.10
+        - !Ref LimaRDSSecurityGroup  # eklendi 21.10
+
+      # VPCSecurityGroups:  #  RDS security groupp bu region'da olmadığı için değiştirildi.
+      #   - !GetAtt LimaRDSSecurityGroup.GroupId  #  Sonuna GroupId eklendi.
       DeleteAutomatedBackups: true
       Engine: MySQL
       EngineVersion: 8.0.19
@@ -55,9 +58,6 @@ Resources:
       Port: 3306
       PubliclyAccessible: true # ???????
   
-
-
-
 
   LimaALBSecurityGroup:
     Type: "AWS::EC2::SecurityGroup"
@@ -70,16 +70,16 @@ Resources:
           ToPort: 80
           CidrIp: 0.0.0.0/0
 
-
-  LimaRDSSecurityGroup:
-    Type: "AWS::EC2::SecurityGroup"
-    Properties:
-      GroupDescription: Enables DB connection from LimaWebServerSecurityGroup.
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 3306
-          ToPort: 3306
-          SourceSecurityGroupId: !GetAtt LimaWebServerSecurityGroup.GroupId
+# İPTAL 
+  # LimaRDSSecurityGroup:  3 iptal edilecek RDS security group yazıldı
+    # Type: "AWS::EC2::SecurityGroup"
+    # Properties:
+      # GroupDescription: Enables DB connection from LimaWebServerSecurityGroup.
+      # SecurityGroupIngress:
+        # - IpProtocol: tcp
+          # FromPort: 3306
+          # ToPort: 3306
+          # SourceSecurityGroupId: !GetAtt LimaWebServerSecurityGroup.GroupId
 
 
   LimaWebServerLaunchTemplate:
@@ -95,7 +95,7 @@ Resources:
             - ResourceType: instance
               Tags: 
                 - Key: Name
-                  Value: !Sub Web Server of ${AWS::StackName} Stack #Stack name nerede belirleniyor?? Stack oluşturulurken veriliyor...
+                  Value: !Sub Web Server of ${AWS::StackName} Stack #Stack name Stack oluşturulurken veriliyor...
           UserData: 
             Fn::Base64:
               !Sub 
@@ -116,15 +116,15 @@ Resources:
               - MyDBURI: !GetAtt LimaRDSDBInstance.Endpoint.Address                
 
 
-
-
   LimaTargetGroup:
     Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
     Properties:
       Port: 80
       Protocol: HTTP
       TargetType: instance
-      VpcId: !GetAtt LimaWebServerSecurityGroup.VpcId
+      UnhealthyThresholdCount: 3
+      HealthyThresholdCount: 2
+      VpcId: !GetAtt LimaALBSecurityGroup.VpcId
   
 
   LimaLoadBalancer:
@@ -133,7 +133,7 @@ Resources:
       IpAddressType: ipv4
       Scheme: internet-facing
       SecurityGroups:
-        - !GetAtt LimaWebServerSecurityGroup.GroupId
+        - !GetAtt LimaALBSecurityGroup.GroupId
       Subnets:
         - subnet-65af6c19 #Herkes kendi VPC'deki default subnet'ini yazacak
         - subnet-edd80ea1
@@ -157,7 +157,7 @@ Resources:
       AvailabilityZones:
         !GetAZs ""
       DesiredCapacity: 2
-      HealthCheckGracePeriod: 90
+      HealthCheckGracePeriod: 300
       HealthCheckType: ELB
       LaunchTemplate: 
         LaunchTemplateId: !Ref LimaWebServerLaunchTemplate
