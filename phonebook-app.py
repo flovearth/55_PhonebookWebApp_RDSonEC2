@@ -120,14 +120,16 @@ def delete_person(name):
 # Write a function named `find_records` which finds phone records by keyword using `GET` and `POST` methods,
 # using template files named `index.html` given under `templates` folder
 # and assign to the static route of ('/')
-@app.route('/', methods=['GET', 'POST'])
-def find_records():
-    if request.method == 'POST':
-        keyword = request.form['username']
-        persons = find_persons(keyword)
-        return render_template('index.html', persons=persons, keyword=keyword, show_result=True, developer_name='Feyzullah SARI')
-    else:
-        return render_template('index.html', show_result=False, developer_name='Feyzullah SARI')
+
+
+
+
+
+
+
+
+
+
 
 
 # Write a function named `add_record` which inserts new record to the database using `GET` and `POST` methods,
